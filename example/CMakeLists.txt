@@ -6,11 +6,10 @@ cmake_minimum_required(VERSION 3.10)
 
 project(sml_parser_example)
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src)
-
-add_executable(parser
+add_executable(sml_parser
     main.c
 )
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src sml_parser_lib)
-target_link_libraries(parser sml_parser_lib)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src)
+
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src src)

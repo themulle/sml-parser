@@ -467,7 +467,7 @@ static int sml_deserialize_msg_body(struct sml_context *ctx)
             sml_skip_element(ctx);
             break;
         default:
-            printf("unknown msg body: 0x%x\n", tag);
+            printf("unknown msg body: 0x%x\n", (uint32_t)tag);
     }
 
     return (int)tag; // safe because tags are only 16-bit
@@ -501,7 +501,10 @@ static int sml_parse_msg(struct sml_context *ctx)
     }
 
     sml_skip_element(ctx); // crc16
-    sml_skip_element(ctx); // endOfSmlMsg
+
+    if (sml_deserialize_end_of_message(ctx) < 0) {
+        return SML_ERR_FORMAT;
+    }
 
     return msg_body_tag;
 }
@@ -546,9 +549,9 @@ int sml_parse(struct sml_context *ctx)
         return SML_ERR_INCOMPLETE;
     }
 
-    while (ctx->sml_buf_pos < ctx->sml_buf_len) {
+    while (ctx->sml_buf_pos + 16 < ctx->sml_buf_len) {
 
-        printf("Parsing SML file at pos 0x%x\n", ctx->sml_buf_pos);
+        // printf("Parsing SML file at pos 0x%x\n", ctx->sml_buf_pos);
 
         /* check escape sequence */
         for (int i = 0; i < 4; i++) {
