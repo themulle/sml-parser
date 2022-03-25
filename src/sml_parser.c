@@ -76,8 +76,10 @@ static int sml_deserialize_octet_string(struct sml_context *ctx, uint8_t *buf, s
         ctx->sml_buf_pos += len;
         return len;
     }
-
-    return SML_ERR_GENERIC;
+    else {
+        ctx->sml_buf_pos += len;
+        return SML_ERR_BUFFER_TOO_SMALL;
+    }
 }
 
 /**
@@ -171,86 +173,6 @@ static int sml_deserialize_int64(struct sml_context *ctx, int64_t *value)
 }
 
 /**
- * Scale JSON number
- *
- * Hack to avoid using floating-point math and printing for scaled values
- *
- * @param buf JSON buffer
- * @param buf_size Size of JSON buffer
- * @param pos Position of the end of the number in the buffer
- * @param scaler Exponent to the basis of 10 for scaling the result
- *
- * @returns 0 for success or negative value in case of error
- */
-static int json_scale_number(char *buf, size_t buf_size, int pos, int scaler)
-{
-    if (pos > 0 && scaler != 0) {
-        if (scaler < 0) {
-            // negative scaler: move digits to the right and insert decimal dot
-            int offset = (-scaler == pos) ? 2 : 1;
-            for (int i = pos + offset; i > pos + scaler; i--) {
-                buf[i] = buf[i - offset];
-            }
-            if (offset == 2) {
-                buf[0] = '0';
-                buf[1] = '.';
-            }
-            else {
-                buf[pos + scaler] = '.';
-            }
-            pos += offset;
-        }
-        else {
-            // positive scaler: append zeros at the end
-            if (buf_size - pos < scaler) {
-                return -1;
-            }
-            else {
-                for (int i = pos; i < pos + scaler; i++) {
-                    buf[pos++] = '0';
-                }
-            }
-        }
-    }
-
-    return pos;
-}
-
-/**
- * Serialize integer value to JSON string
- *
- * @param buf JSON buffer
- * @param buf_size Size of JSON buffer
- * @param value Pointer to the variable to store the result
- * @param scaler Exponent to the basis of 10 for scaling the result
- *
- * @returns 0 for success or negative value in case of error
- */
-static int json_serialize_int64(char *buf, size_t buf_size, const int64_t *value, int scaler)
-{
-    int pos = snprintf(buf, buf_size - 1, "%" PRIi64, *value);
-
-    return json_scale_number(buf, buf_size, pos, scaler);
-}
-
-/**
- * Serialize unsigned integer value to JSON string
- *
- * @param buf JSON buffer
- * @param buf_size Size of JSON buffer
- * @param value Pointer to the variable to store the result
- * @param scaler Exponent to the basis of 10 for scaling the result
- *
- * @returns 0 for success or negative value in case of error
- */
-static int json_serialize_uint64(char *buf, size_t buf_size, const uint64_t *value, int scaler)
-{
-    int pos = snprintf(buf, buf_size - 1, "%" PRIu64, *value);
-
-    return json_scale_number(buf, buf_size, pos, scaler);
-}
-
-/**
  * Skip next SML element
  *
  * @param ctx SML context
@@ -282,6 +204,187 @@ static int sml_skip_element(struct sml_context *ctx)
     return SML_ERR_GENERIC;
 }
 
+static uint32_t sml_scale_uint32(int64_t number, int scaler)
+{
+    if (scaler < 0) {
+        // negative scaler: reduce resolution
+        int divider = 10;
+        for (int i = -1; i > scaler; i--) {
+            divider *= 10;
+        }
+        number /= divider;
+    }
+    else {
+        // positive scaler: append zeros at the end
+        for (int i = 0; i < scaler; i++) {
+            number *= 10;
+        }
+    }
+
+    return (uint32_t)number;
+}
+
+static int32_t sml_scale_int32(int64_t number, int scaler)
+{
+    if (scaler < 0) {
+        // negative scaler: reduce resolution
+        int divider = 10;
+        for (int i = -1; i > scaler; i--) {
+            divider *= 10;
+        }
+        number /= divider;
+    }
+    else {
+        // positive scaler: append zeros at the end
+        for (int i = 0; i < scaler; i++) {
+            number *= 10;
+        }
+    }
+
+    return number;
+}
+
+static float sml_scale_float(int64_t number, int scaler)
+{
+    if (scaler < 0) {
+        int divider = 10;
+        for (int i = -1; i > scaler; i--) {
+            divider *= 10;
+        }
+        return (float)number / divider;
+    }
+    else {
+        int factor = 1;
+        for (int i = 0; i < scaler; i++) {
+            number *= 10;
+        }
+        return (float)number * factor;
+    }
+}
+
+static int sml_store_number(struct sml_context *ctx, int64_t number, uint32_t obis_short,
+                            int scaler, uint8_t unit)
+{
+    switch (obis_short) {
+        case OBIS_ELECTRICITY_IMPORT_ACTIVE_ENERGY_TOTAL:
+            if (unit == DLMS_UNIT_WATT_HOUR) {
+                ctx->values_electricity->energy_import_active_Wh = sml_scale_uint32(number, scaler);
+            }
+            break;
+        case OBIS_ELECTRICITY_IMPORT_ACTIVE_ENERGY_TARIFF_1:
+            if (unit == DLMS_UNIT_WATT_HOUR
+                && ctx->values_electricity->energy_import_active_Wh == UINT32_MAX) {
+                ctx->values_electricity->energy_import_active_Wh = sml_scale_uint32(number, scaler);
+            }
+            break;
+        case OBIS_ELECTRICITY_EXPORT_ACTIVE_ENERGY_TOTAL:
+            if (unit == DLMS_UNIT_WATT_HOUR) {
+                ctx->values_electricity->energy_export_active_Wh = sml_scale_uint32(number, scaler);
+            }
+            break;
+        case OBIS_ELECTRICITY_EXPORT_ACTIVE_ENERGY_TARIFF_1:
+            if (unit == DLMS_UNIT_WATT_HOUR
+                && ctx->values_electricity->energy_export_active_Wh == UINT32_MAX) {
+                ctx->values_electricity->energy_export_active_Wh = sml_scale_uint32(number, scaler);
+            }
+            break;
+        case OBIS_ELECTRICITY_FREQUENCY:
+            if (unit == DLMS_UNIT_WATT_HOUR) {
+                ctx->values_electricity->frequency_Hz = sml_scale_float(number, scaler);
+            }
+            break;
+        case OBIS_ELECTRICITY_IMPORT_ACTIVE_POWER_TOTAL:
+        case OBIS_ELECTRICITY_ACTIVE_POWER:
+        case OBIS_ELECTRICITY_ACTIVE_POWER_DELTA:
+            if (unit == DLMS_UNIT_WATT) {
+                ctx->values_electricity->power_active_W = sml_scale_float(number, scaler);
+            }
+            break;
+        case OBIS_ELECTRICITY_L1_CURRENT:
+            if (unit == DLMS_UNIT_AMPERE) {
+                ctx->values_electricity->current_l1_A = sml_scale_float(number, scaler);
+            }
+            break;
+        case OBIS_ELECTRICITY_L2_CURRENT:
+            if (unit == DLMS_UNIT_AMPERE) {
+                ctx->values_electricity->current_l2_A = sml_scale_float(number, scaler);
+            }
+            break;
+        case OBIS_ELECTRICITY_L3_CURRENT:
+            if (unit == DLMS_UNIT_AMPERE) {
+                ctx->values_electricity->current_l3_A = sml_scale_float(number, scaler);
+            }
+            break;
+        case OBIS_ELECTRICITY_L1_VOLTAGE:
+            if (unit == DLMS_UNIT_VOLT) {
+                ctx->values_electricity->voltage_l1_V = sml_scale_float(number, scaler);
+            }
+            break;
+        case OBIS_ELECTRICITY_L2_VOLTAGE:
+            if (unit == DLMS_UNIT_VOLT) {
+                ctx->values_electricity->voltage_l2_V = sml_scale_float(number, scaler);
+            }
+            break;
+        case OBIS_ELECTRICITY_L3_VOLTAGE:
+            if (unit == DLMS_UNIT_VOLT) {
+                ctx->values_electricity->voltage_l3_V = sml_scale_float(number, scaler);
+            }
+            break;
+        case OBIS_ELECTRICITY_IL1_UL1_PHASE_ANGLE:
+            if (unit == DLMS_UNIT_DEGREE) {
+                ctx->values_electricity->phase_shift_l1_deg = sml_scale_int32(number, scaler);
+            }
+            break;
+        case OBIS_ELECTRICITY_IL2_UL2_PHASE_ANGLE:
+            if (unit == DLMS_UNIT_DEGREE) {
+                ctx->values_electricity->phase_shift_l2_deg = sml_scale_int32(number, scaler);
+            }
+            break;
+        case OBIS_ELECTRICITY_IL3_UL3_PHASE_ANGLE:
+            if (unit == DLMS_UNIT_DEGREE) {
+                ctx->values_electricity->phase_shift_l3_deg = sml_scale_int32(number, scaler);
+            }
+            break;
+    }
+
+    return 0;
+}
+
+static int sml_deserialize_value(struct sml_context *ctx, uint32_t obis_short, int scaler,
+                                 uint8_t unit)
+{
+    int pos = 0;
+    uint8_t tl = ctx->sml_buf[ctx->sml_buf_pos];
+    if ((tl & SML_TYPE_OCTET_STRING_MASK) == SML_TYPE_OCTET_STRING) {
+        char str[32];
+        int ret = sml_deserialize_octet_string(ctx, (uint8_t *)str, sizeof(str) - 1);
+        if (ret < 0 && ret != SML_ERR_BUFFER_TOO_SMALL) {
+            printf("deserializing octet string %x at pos %x failed\n", tl, ctx->sml_buf_pos);
+            return SML_ERR_GENERIC;
+        }
+    }
+    else if ((tl & SML_TYPE_INT_MASK) == SML_TYPE_INT) {
+        int64_t i64;
+        sml_deserialize_int64(ctx, &i64);
+        sml_store_number(ctx, i64, obis_short, scaler, unit);
+    }
+    else if ((tl & SML_TYPE_UINT_MASK) == SML_TYPE_UINT) {
+        uint64_t u64;
+        sml_deserialize_uint64(ctx, &u64);
+        sml_store_number(ctx, u64, obis_short, scaler, unit);
+    }
+    else if (tl == SML_TYPE_BOOL) {
+        bool b;
+        sml_deserialize_bool(ctx, &b);
+    }
+    else {
+        printf("unknown type: 0x%x\n", ctx->sml_buf[ctx->sml_buf_pos]);
+        sml_skip_element(ctx);
+    }
+
+    return 0;
+}
+
 /**
  * Deserialize SML list entry
  *
@@ -296,99 +399,44 @@ static int sml_deserialize_list_entry(struct sml_context *ctx)
     int ret;
 
     uint8_t obj_name[8];
-    ret = sml_deserialize_octet_string(ctx, obj_name, sizeof(obj_name));
-    if (ret < 0) {
+    int obj_name_len = sml_deserialize_octet_string(ctx, obj_name, sizeof(obj_name));
+    if (obj_name_len < 0) {
         printf("deserializing obj_name failed\n");
         return SML_ERR_GENERIC;
-    }
-    int name_len =
-        obis_decode_object_name(&obj_name[1], ret - 1, &ctx->json_buf[ctx->json_buf_pos + 1],
-                                ctx->json_buf_size - ctx->json_buf_pos - 2, false);
-    if (name_len > 0) {
-        ctx->json_buf[ctx->json_buf_pos++] = '"';
-        ctx->json_buf_pos += name_len;
     }
 
     sml_skip_element(ctx); // status
     sml_skip_element(ctx); // valTime
 
-    if (name_len > 0) {
+    if (obj_name_len == 1 + 6) { // name is a valid obis code
+        uint32_t obis_short = OBIS_CODE_SHORT(obj_name[1], obj_name[3], obj_name[4], obj_name[5]);
+
         uint64_t unit;
         ret = sml_deserialize_uint64(ctx, &unit);
         if (ret < 0) {
             printf("deserializing unit string failed\n");
             return SML_ERR_GENERIC;
         }
-        else {
-            if (unit < ARRAY_SIZE(dlms_units) && unit != 0) {
-                int pos = 0;
-                pos = snprintf(&ctx->json_buf[ctx->json_buf_pos],
-                               ctx->json_buf_size - ctx->json_buf_pos, "_%s", dlms_units[unit]);
-                if (pos > 0) {
-                    ctx->json_buf_pos += pos;
-                }
-                else {
-                    return SML_ERR_GENERIC;
-                }
-            }
-            ctx->json_buf[ctx->json_buf_pos++] = '"';
-            ctx->json_buf[ctx->json_buf_pos++] = ':';
+
+        int64_t scaler = 0;
+        ret = sml_deserialize_int64(ctx, &scaler);
+        if (ret < 0) {
+            printf("deserializing scaler failed\n");
+            return SML_ERR_GENERIC;
         }
+
+        ret = sml_deserialize_value(ctx, obis_short, (int)scaler, (uint8_t)unit);
+        if (ret < 0) {
+            printf("deserializing value failed\n");
+            return SML_ERR_GENERIC;
+        }
+
+        // for debugging purposes
+        // obis_print_object_name(obj_name + 1, obj_name_len - 1, unit, scaler);
     }
     else {
         sml_skip_element(ctx); // unit
-    }
-
-    int64_t scaler = 0;
-    ret = sml_deserialize_int64(ctx, &scaler);
-    if (ret < 0) {
-        printf("deserializing scaler failed\n");
-        return SML_ERR_GENERIC;
-    }
-
-    if (name_len > 0) {
-        int pos = 0;
-        uint8_t tl = ctx->sml_buf[ctx->sml_buf_pos];
-        if ((tl & SML_TYPE_OCTET_STRING_MASK) == SML_TYPE_OCTET_STRING) {
-            char str[32];
-            int ret = sml_deserialize_octet_string(ctx, (uint8_t *)str, sizeof(str) - 1);
-            if (ret < 0) {
-                printf("%d: deserializing octet string failed\n", tl);
-                return SML_ERR_GENERIC;
-            }
-            str[ret] = '\0';
-            pos = snprintf(ctx->json_buf + ctx->json_buf_pos,
-                           ctx->json_buf_size - ctx->json_buf_pos - 1, "\"%s\"", str);
-        }
-        else if ((tl & SML_TYPE_INT_MASK) == SML_TYPE_INT) {
-            int64_t i64;
-            sml_deserialize_int64(ctx, &i64);
-            pos = json_serialize_int64(ctx->json_buf + ctx->json_buf_pos,
-                                       ctx->json_buf_size - ctx->json_buf_pos - 1, &i64, scaler);
-        }
-        else if ((tl & SML_TYPE_UINT_MASK) == SML_TYPE_UINT) {
-            uint64_t u64;
-            sml_deserialize_uint64(ctx, &u64);
-            pos = json_serialize_uint64(ctx->json_buf + ctx->json_buf_pos,
-                                        ctx->json_buf_size - ctx->json_buf_pos - 1, &u64, scaler);
-        }
-        else if (tl == SML_TYPE_BOOL) {
-            bool b;
-            sml_deserialize_bool(ctx, &b);
-            pos = snprintf(ctx->json_buf + ctx->json_buf_pos,
-                           ctx->json_buf_size - ctx->json_buf_pos - 1, "\"%s\"",
-                           b ? "true" : "false");
-        }
-        else {
-            printf("unknown type: 0x%x\n", ctx->sml_buf[ctx->sml_buf_pos]);
-            sml_skip_element(ctx);
-        }
-        if (pos > 0) {
-            ctx->json_buf[ctx->json_buf_pos + pos] = ',';
-            ctx->json_buf_pos += pos + 1;
-        }
-    }
-    else {
+        sml_skip_element(ctx); // scaler
         sml_skip_element(ctx); // value
     }
 
@@ -520,20 +568,12 @@ static int sml_parse_msg(struct sml_context *ctx)
  */
 static int sml_parse_file(struct sml_context *ctx)
 {
-    size_t json_buf_pos_init = ctx->json_buf_pos;
-
-    ctx->json_buf[ctx->json_buf_pos++] = '{';
-
     while (true) {
         int msg_body_tag = sml_parse_msg(ctx);
         if (msg_body_tag == SML_MSG_BODY_PUBLIC_CLOSE_RES) {
-            ctx->json_buf[ctx->json_buf_pos - 1] = '}';
-            ctx->json_buf[ctx->json_buf_pos] = '\0';
             return 0;
         }
         else if (msg_body_tag < 0) {
-            ctx->json_buf_pos = json_buf_pos_init;
-            ctx->json_buf[ctx->json_buf_pos - 1] = '\0';
             return msg_body_tag;
         }
     }
@@ -541,45 +581,100 @@ static int sml_parse_file(struct sml_context *ctx)
     return 0;
 }
 
+/**
+ * Set values to agreed value meaning the measurement is not available from the meter.
+ */
+static void sml_init_elctricity(struct sml_context *ctx)
+{
+    ctx->values_electricity->energy_import_active_Wh = UINT32_MAX;
+    ctx->values_electricity->energy_export_active_Wh = UINT32_MAX;
+
+    ctx->values_electricity->frequency_Hz = NAN;
+    ctx->values_electricity->power_active_W = NAN;
+
+    ctx->values_electricity->voltage_l1_V = NAN;
+    ctx->values_electricity->voltage_l2_V = NAN;
+    ctx->values_electricity->voltage_l3_V = NAN;
+
+    ctx->values_electricity->current_l1_A = NAN;
+    ctx->values_electricity->current_l2_A = NAN;
+    ctx->values_electricity->current_l3_A = NAN;
+
+    ctx->values_electricity->phase_shift_l1_deg = INT16_MAX;
+    ctx->values_electricity->phase_shift_l2_deg = INT16_MAX;
+    ctx->values_electricity->phase_shift_l3_deg = INT16_MAX;
+}
+
 /* only public API of the parser, see header for description */
 int sml_parse(struct sml_context *ctx)
 {
+    if (ctx->sml_buf == NULL || ctx->values_electricity == NULL) {
+        return SML_ERR_MEMORY;
+    }
+
+    sml_init_elctricity(ctx);
+
     if (ctx->sml_buf_len < 16) {
         /* at least the escape sequences at beginning and end are needed */
         return SML_ERR_INCOMPLETE;
     }
 
-    while (ctx->sml_buf_pos + 16 < ctx->sml_buf_len) {
+    // printf("Parsing SML file at pos 0x%x\n", ctx->sml_buf_pos);
 
-        // printf("Parsing SML file at pos 0x%x\n", ctx->sml_buf_pos);
-
-        /* check escape sequence */
-        for (int i = 0; i < 4; i++) {
-            if (ctx->sml_buf[ctx->sml_buf_pos] != SML_ESCAPE_CHAR) {
-                return SML_ERR_ESCAPE_SEQ;
-            }
-            ctx->sml_buf_pos++;
+    /* check escape sequence */
+    for (int i = 0; i < 4; i++) {
+        if (ctx->sml_buf[ctx->sml_buf_pos] != SML_ESCAPE_CHAR) {
+            return SML_ERR_ESCAPE_SEQ;
         }
-
-        /* check version number */
-        for (int i = 0; i < 4; i++) {
-            if (ctx->sml_buf[ctx->sml_buf_pos] != SML_VERSION1_CHAR) {
-                return SML_ERR_VERSION;
-            }
-            ctx->sml_buf_pos++;
-        }
-
-        sml_parse_file(ctx);
-
-        printf("%s\n", ctx->json_buf);
-        ctx->json_buf_pos = 0; // reset JSON buffer
-
-        /* skip padding */
-        ctx->sml_buf_pos += 4 - (ctx->sml_buf_pos % 4);
-
-        /* skip final escape and CRC */
-        ctx->sml_buf_pos += 8;
+        ctx->sml_buf_pos++;
     }
 
-    return 0;
+    /* check version number */
+    for (int i = 0; i < 4; i++) {
+        if (ctx->sml_buf[ctx->sml_buf_pos] != SML_VERSION1_CHAR) {
+            return SML_ERR_VERSION;
+        }
+        ctx->sml_buf_pos++;
+    }
+
+    int ret = sml_parse_file(ctx);
+
+    /* skip padding */
+    ctx->sml_buf_pos += 4 - (ctx->sml_buf_pos % 4);
+
+    /* skip final escape and CRC */
+    ctx->sml_buf_pos += 8;
+
+    return ret;
+}
+
+void sml_debug_print(struct sml_context *ctx)
+{
+    struct sml_values_electricity *electricity = ctx->values_electricity;
+
+    if (electricity->energy_import_active_Wh != UINT32_MAX) {
+        printf("ImpAct_Wh:%u ", electricity->energy_import_active_Wh);
+    }
+    if (electricity->energy_export_active_Wh != UINT32_MAX) {
+        printf("ExpAct_Wh:%u ", electricity->energy_export_active_Wh);
+    }
+    if (electricity->frequency_Hz != NAN) {
+        printf("Freq_Hz:%.1f ", electricity->frequency_Hz);
+    }
+    if (electricity->power_active_W != NAN) {
+        printf("PwrAct_W:%.1f ", electricity->power_active_W);
+    }
+    if (electricity->voltage_l1_V != NAN) {
+        printf("L1_V:%.1f L2_V:%.1f L3_V:%.1f ", electricity->voltage_l1_V,
+               electricity->voltage_l2_V, electricity->voltage_l3_V);
+    }
+    if (electricity->current_l1_A != NAN) {
+        printf("L1_A:%.1f L2_A:%.1f L3_A:%.1f ", electricity->current_l1_A,
+               electricity->current_l2_A, electricity->current_l3_A);
+    }
+    if (electricity->phase_shift_l1_deg != INT16_MAX) {
+        printf("L1_deg:%d L2_deg:%d L3_deg:%d ", electricity->phase_shift_l1_deg,
+               electricity->phase_shift_l2_deg, electricity->phase_shift_l3_deg);
+    }
+    printf("\n");
 }

@@ -7,8 +7,14 @@
 #ifndef SML_PARSER_H_
 #define SML_PARSER_H_
 
+#include <math.h>
 #include <stdint.h>
 #include <string.h>
+
+#ifndef NAN
+/* for some reason Zephyr does not know NAN even though math.h is included */
+#define NAN (__builtin_nanf(""))
+#endif
 
 #define SML_ESCAPE_CHAR   0x1b
 #define SML_VERSION1_CHAR 0x01
@@ -66,30 +72,57 @@
 #define SML_TL_EXTENDED      0x80 /* indicates that a length > 15 bytes */
 #define SML_TL_EXTENDED_MASK 0x80
 
-#define SML_ERR_GENERIC    -1
-#define SML_ERR_ESCAPE_SEQ -2
-#define SML_ERR_VERSION    -3
-#define SML_ERR_INCOMPLETE -4
-#define SML_ERR_FORMAT     -5
+#define SML_ERR_GENERIC          -1
+#define SML_ERR_ESCAPE_SEQ       -2
+#define SML_ERR_VERSION          -3
+#define SML_ERR_INCOMPLETE       -4
+#define SML_ERR_FORMAT           -5
+#define SML_ERR_MEMORY           -6
+#define SML_ERR_BUFFER_TOO_SMALL -7
+
+/*
+ * float values of NaN and integers of positive max mean that the variable is not set.
+ */
+struct sml_values_electricity
+{
+    /* uint32_t will overflow after 50 years with 9,8 kW average power */
+    uint32_t energy_import_active_Wh;
+    uint32_t energy_export_active_Wh;
+
+    float frequency_Hz;
+    float power_active_W;
+
+    float voltage_l1_V;
+    float voltage_l2_V;
+    float voltage_l3_V;
+
+    float current_l1_A;
+    float current_l2_A;
+    float current_l3_A;
+
+    int16_t phase_shift_l1_deg;
+    int16_t phase_shift_l2_deg;
+    int16_t phase_shift_l3_deg;
+};
 
 struct sml_context
 {
     uint8_t *sml_buf;
     size_t sml_buf_len;
     int sml_buf_pos;
-    uint8_t *json_buf;
-    size_t json_buf_size;
-    int json_buf_pos;
+    struct sml_values_electricity *values_electricity;
 };
 
 /**
  * Main SML parser function
  *
- * Processes the provided SML data buffer (can contain multiple SML files) and converts it into
- * JSON, stored in the json_buf of the context.
+ * Processes the provided SML data buffer (can contain multiple SML files) and stores the values
+ * inside the struct sml_values_electricity.
  *
  * @param sml SML context containing buffer information
  */
 int sml_parse(struct sml_context *sml);
+
+void sml_debug_print(struct sml_context *ctx);
 
 #endif /* SML_PARSER_H_ */

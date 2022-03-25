@@ -13,6 +13,8 @@
 uint8_t sml_buf[10000];
 uint8_t json_buf[2000];
 
+struct sml_values_electricity values_electricity;
+
 int main(void)
 {
     freopen(NULL, "rb", stdin);
@@ -22,17 +24,21 @@ int main(void)
         .sml_buf = sml_buf,
         .sml_buf_len = len,
         .sml_buf_pos = 0,
-        .json_buf = json_buf,
-        .json_buf_size = sizeof(json_buf),
-        .json_buf_pos = 0,
+        .values_electricity = &values_electricity,
     };
 
     printf("Parsing %d bytes:\n", len);
 
-    int err = sml_parse(&sml_ctx);
-    if (err) {
-        printf("Parser error %d at position 0x%x\n", err, sml_ctx.sml_buf_pos);
-        return 1;
+    while (sml_ctx.sml_buf_pos < sml_ctx.sml_buf_len) {
+        int err = sml_parse(&sml_ctx);
+        if (err) {
+            printf("Parser error %d at position 0x%x\n", err, sml_ctx.sml_buf_pos);
+            return 1;
+        }
+
+        printf("---------------------------------\n");
+        sml_debug_print(&sml_ctx);
+        printf("---------------------------------\n\n");
     }
 
     return 0;
