@@ -10,7 +10,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#include "dlms_units.h"
 #include "obis.h"
 
 #ifndef ARRAY_SIZE
@@ -182,7 +181,6 @@ static int sml_deserialize_int64(struct sml_context *ctx, int64_t *value)
 static int sml_skip_element(struct sml_context *ctx)
 {
     uint8_t byte = ctx->sml_buf[ctx->sml_buf_pos];
-    size_t pos = ctx->sml_buf_pos;
     uint8_t len = 0;
 
     if (sml_deserialize_length(ctx, &len) < 0) {
@@ -190,13 +188,13 @@ static int sml_skip_element(struct sml_context *ctx)
     }
 
     if ((byte & SML_TYPE_LIST_OF_MASK) == SML_TYPE_LIST_OF) {
-        // printf("skipping list of %d elements at 0x%x\n", len, pos);
+        // printf("skipping list of %d elements at 0x%x\n", len, ctx->sml_buf_pos);
         for (int i = 0; i < len; i++) {
             sml_skip_element(ctx);
         }
     }
     else {
-        // printf("skipping %d bytes for 0x%x at 0x%x\n", len, byte, pos);
+        // printf("skipping %d bytes for 0x%x at 0x%x\n", len, byte, ctx->sml_buf_pos);
         ctx->sml_buf_pos += len;
         return 0;
     }
@@ -353,7 +351,6 @@ static int sml_store_number(struct sml_context *ctx, int64_t number, uint32_t ob
 static int sml_deserialize_value(struct sml_context *ctx, uint32_t obis_short, int scaler,
                                  uint8_t unit)
 {
-    int pos = 0;
     uint8_t tl = ctx->sml_buf[ctx->sml_buf_pos];
     if ((tl & SML_TYPE_OCTET_STRING_MASK) == SML_TYPE_OCTET_STRING) {
         char str[32];

@@ -11,6 +11,67 @@
 #include <stdint.h>
 #include <string.h>
 
+/* most relevant unit codes of list in obis.c */
+enum dlms_units_enum
+{
+    DLMS_UNIT_YEAR = 1,                  // time                year
+    DLMS_UNIT_MONTH = 2,                 // time                month
+    DLMS_UNIT_WEEK = 3,                  // time                week
+    DLMS_UNIT_DAY = 4,                   // time                day
+    DLMS_UNIT_HOUR = 5,                  // time                hour
+    DLMS_UNIT_MINUTE = 6,                // time                minute
+    DLMS_UNIT_SECOND = 7,                // time                second
+    DLMS_UNIT_DEGREE = 8,                // (phase) angle       degree
+    DLMS_UNIT_DEGREE_CELSIUS = 9,        // temperature (T)     degree celsius          K-273.15
+    DLMS_UNIT_CURRENCY = 10,             // (local) currency
+    DLMS_UNIT_METRE = 11,                // length (l)		    metre                   m
+    DLMS_UNIT_METRE_PER_SECOND = 12,     // speed (v)			metre per second	    m/s
+    DLMS_UNIT_CUBIC_METRE = 13,          // volume (V)          cubic metre		        m³
+    DLMS_UNIT_CORR_CUBIC_METRE = 14,     // corrected volume    cubic metre		        m³
+    DLMS_UNIT_CUBIC_METRE_PER_HOUR = 15, // volume flux		    cubic metre per hour 	m³/(60*60s)
+    DLMS_UNIT_CORR_CUBIC_METRE_PER_HOUR = 16, // corrected volume flux
+    DLMS_UNIT_CUBIC_METRE_PER_DAY = 17,       // volume flux m³/(24*60*60s)
+    DLMS_UNIT_CORR_CUBIC_METRE_PER_DAY = 18,  // corrected volume flux
+    DLMS_UNIT_LITRE = 19,                     // volume			    litre			        10-3 m³
+    DLMS_UNIT_KILOGRAM = 20,                  // mass (m)		    kilogram
+    DLMS_UNIT_NEWTON = 21,                    // force (F)		    newton
+    DLMS_UNIT_NEWTON_METRE = 22,              // energy			    newtonmeter		        J = Nm = Ws
+    DLMS_UNIT_PASCAL = 23,                    // pressure (p)	    pascal			        N/m²
+    DLMS_UNIT_BAR = 24,                       // pressure (p)	    bar			            10⁵ N/m²
+    DLMS_UNIT_JOULE = 25,                     // energy			    joule			        J = Nm = Ws
+    DLMS_UNIT_JOULE_PER_HOUR = 26,            // thermal power	    joule per hour		    J/(60*60s)
+    DLMS_UNIT_WATT = 27,                      // active power (P)	watt			        W = J/s
+    DLMS_UNIT_VOLT_AMPERE = 28,               // apparent power (S)	volt-ampere
+    DLMS_UNIT_VAR = 29,                       // reactive power (Q)	var
+    DLMS_UNIT_WATT_HOUR = 30,                 // active energy		watt-hour		        W*(60*60s)
+    DLMS_UNIT_VOLT_AMPERE_HOUR = 31,          // apparent energy	volt-ampere-hour	    VA*(60*60s)
+    DLMS_UNIT_VAR_HOUR = 32,                  // reactive energy	var-hour		        var*(60*60s)
+    DLMS_UNIT_AMPERE = 33,                    // current (I)		ampere			        A
+    DLMS_UNIT_COULOMB = 34,                   // electrical charge (Q)	coulomb			        C = As
+    DLMS_UNIT_VOLT = 35,                      // voltage (U)		volt			        V
+    DLMS_UNIT_VOLT_PER_METRE = 36,            // electr. field strength (E)    volt per metre
+    DLMS_UNIT_FARAD = 37,                     // capacitance (C)	farad			        C/V = As/V
+    DLMS_UNIT_OHM = 38,                       // resistance (R)		ohm			            Ω = V/A
+    DLMS_UNIT_OHM_METRE = 39,                 // resistivity (ρ)	Ωm
+    DLMS_UNIT_WEBER = 40,                     // magnetic flux (Φ)	weber			        Wb = Vs
+    DLMS_UNIT_TESLA = 41,                     // magnetic flux density (B)  tesla			Wb/m2
+    DLMS_UNIT_AMPERE_PER_METRE = 42,          // magnetic field strength (H)   ampere per metre	A/m
+    DLMS_UNIT_HENRY = 43,                     // inductance (L)		henry			        H = Wb/A
+    DLMS_UNIT_HERTZ = 44,                     // frequency (f, ω)	hertz			        1/s
+    DLMS_UNIT_1_PER_WATT_HOUR = 45,           // R_W (active energy meter constant or pulse value)
+    DLMS_UNIT_1_PER_VAR_HOUR = 46,            // R_B (reactive energy meter constant or pulse value)
+    DLMS_UNIT_1_PER_VOLT_AMPERE_HOUR = 47,    // R_S (apparent energy meter constant or pulse value)
+    DLMS_UNIT_KG_S = 50,                      // mass flux			kilogram per second	    kg/s
+    DLMS_UNIT_SIEMENS = 51,                   // conductance        siemens			        1/Ω
+    DLMS_UNIT_KELVIN = 52,                    // temperature (T)	kelvin
+    DLMS_UNIT_1_PER_CUBIC_METRE = 55,         // R_V, meter constant or pulse value (volume)
+    DLMS_UNIT_PERCENT = 56,                   // percentage		                            %
+    DLMS_UNIT_AMPERE_HOUR = 57,               // energy		        ampere-hour
+    DLMS_UNIT_MOLE_PERCENT = 62,              // molar fraction of mole percent
+    DLMS_UNIT_GRAM_PER_CUBIC_METRE = 63,      // mass density, quantity of material
+    DLMS_UNIT_PASCAL_SECOND = 64,             // dynamic viscosity pascal second
+};
+
 struct obis_code
 {
     uint8_t a;
