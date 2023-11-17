@@ -611,7 +611,7 @@ int sml_parse(struct sml_context *ctx)
 
     sml_init_elctricity(ctx);
 
-    if (ctx->sml_buf_pos>=ctx->sml_buf_len && (ctx->sml_buf_len-ctx->sml_buf_pos) <= 16 ) {
+    if (ctx->sml_buf_pos >= ctx->sml_buf_len && (ctx->sml_buf_len - ctx->sml_buf_pos) < 16 ) {
         /* buffer position has to be valid (double check because of unsigned overflow) */
         /* at least the escape sequences at beginning and end are needed in the remaining buffer */
         return SML_ERR_INCOMPLETE;
